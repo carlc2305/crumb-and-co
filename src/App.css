@@ -65,7 +65,7 @@
   padding: 60px 20px;
 
   background-image:
-    linear-gradient(rgba(60, 35, 20, 0.25), rgba(60, 35, 20, 0.25)),
+    linear-gradient(rgba(60, 35, 20, 0.35), rgba(60, 35, 20, 0.35)),
     url("./assets/images/hero-1.png");
 
   background-size: cover;

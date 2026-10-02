@@ -58,17 +58,35 @@
 /* Hero */
 
 .hero {
-  min-height: 500px;
+  min-height: 520px;
   display: flex;
   align-items: center;
   justify-content: center;
-  text-align: center;
   padding: 60px 20px;
-  background-color: #fffaf0;
+
+  background-image:
+    linear-gradient(rgba(60, 35, 20, 0.25), rgba(60, 35, 20, 0.25)),
+    url("./assets/images/hero 1.jpg");
+
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 
 .hero-content {
-  max-width: 700px;
+  width: min(850px, 90%);
+  padding: 60px 50px;
+
+  text-align: center;
+
+  background: rgba(255, 248, 235, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 20px;
+
+  box-shadow: 0 15px 40px rgba(60, 35, 20, 0.18);
 }
 
 .hero h1 {

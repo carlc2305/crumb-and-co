@@ -2388,3 +2388,14 @@
     width: 100%;
   }
 }
+
+/* HERO IMAGE TEST */
+.hero {
+  background-image:
+    linear-gradient(rgba(60, 35, 20, 0.25), rgba(60, 35, 20, 0.25)),
+    url("./assets/images/hero-1.jpg") !important;
+
+  background-size: cover !important;
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+}

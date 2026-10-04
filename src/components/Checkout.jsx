@@ -56,7 +56,7 @@ function Checkout() {
         <form
           id="checkout-form"
           className="checkout-form"
-          onSubmit={(event) => {
+          onSubmit={async (event) => {
             event.preventDefault();
 
             if (!collectionDate) {
@@ -69,32 +69,37 @@ function Checkout() {
               return;
             }
 
-            const order = createOrder({
-              customer: {
-                firstName,
-                lastName,
-                email,
-                phone,
-              },
-              fulfilment,
-              collectionDate,
-              collectionTime,
-              items: cart,
-              total: cartTotal,
-              notes,
-            });
-
-            navigate("/order-review", {
-              state: {
-                orderId: order.id,
-                firstName,
-                lastName,
-                email,
-                phone,
+            try {
+              const order = await createOrder({
+                customer: {
+                  firstName,
+                  lastName,
+                  email,
+                  phone,
+                },
+                fulfilment,
                 collectionDate,
                 collectionTime,
-              },
-            });
+                items: cart,
+                total: cartTotal,
+                notes,
+              });
+
+              navigate("/order-review", {
+                state: {
+                  orderId: order.id,
+                  firstName,
+                  lastName,
+                  email,
+                  phone,
+                  collectionDate,
+                  collectionTime,
+                },
+              });
+            } catch (error) {
+              console.error("Order creation failed:", error);
+              alert("Sorry, we couldn't place your order. Please try again.");
+            }
           }}
         >
           <h1>Checkout</h1>

@@ -5,7 +5,7 @@ function AdminOrder() {
   const { orderId } = useParams();
   const { orders, updateOrderStatus } = useOrders();
 
-  const isLoggedIn = sessionStorage.getItem("crumbCoAdmin") === "true";
+  const isLoggedIn = sessionStorage.getItem("crumbCoAdminToken");
 
   if (!isLoggedIn) {
     return <Navigate to="/admin-login" replace />;

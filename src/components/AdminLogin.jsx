@@ -8,16 +8,37 @@ function AdminLogin() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
-  function handleLogin(event) {
+  async function handleLogin(event) {
     event.preventDefault();
 
-    if (username === "admin" && password === "crumbco") {
-      sessionStorage.setItem("crumbCoAdmin", "true");
-      navigate("/admin");
-      return;
-    }
+    setError("");
 
-    setError("Incorrect username or password.");
+    try {
+      const response = await fetch("http://localhost:4242/api/admin/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          username,
+          password,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || "Incorrect username or password.");
+        return;
+      }
+
+      sessionStorage.setItem("crumbCoAdminToken", data.token);
+
+      navigate("/admin");
+    } catch (error) {
+      console.error("Admin login error:", error);
+      setError("Unable to connect to the server. Please try again.");
+    }
   }
 
   return (

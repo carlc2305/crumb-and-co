@@ -10,7 +10,7 @@ function Admin() {
     useAvailability();
   const { orders, updateOrderStatus } = useOrders();
 
-  const isLoggedIn = sessionStorage.getItem("crumbCoAdmin") === "true";
+  const isLoggedIn = sessionStorage.getItem("crumbCoAdminToken");
 
   if (!isLoggedIn) {
     return <Navigate to="/admin-login" replace />;
@@ -42,9 +42,14 @@ function Admin() {
   }
 
   function formatDate(date) {
-    if (!date) return "Not selected";
+    if (!date) return "—";
 
-    const [year, month, day] = date.split("-");
+    const datePart = String(date).split("T")[0];
+    const [year, month, day] = datePart.split("-");
+
+    if (!year || !month || !day) {
+      return "Invalid Date";
+    }
 
     return new Date(
       Number(year),

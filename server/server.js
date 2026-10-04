@@ -1,5 +1,7 @@
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import jwt from "jsonwebtoken";
 import pool from "./db.js";
 
 const app = express();
@@ -7,6 +9,35 @@ const PORT = process.env.PORT || 4242;
 
 app.use(cors());
 app.use(express.json());
+
+function requireAdmin(req, res, next) {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({
+      error: "Authentication required.",
+    });
+  }
+
+  const token = authHeader.split(" ")[1];
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    if (decoded.role !== "admin") {
+      return res.status(403).json({
+        error: "Admin access required.",
+      });
+    }
+
+    req.admin = decoded;
+    next();
+  } catch (error) {
+    return res.status(401).json({
+      error: "Invalid or expired authentication token.",
+    });
+  }
+}
 
 function formatOrder(row) {
   return {
@@ -32,6 +63,34 @@ function formatOrder(row) {
 app.get("/", (req, res) => {
   res.json({
     message: "Crumb & Co server is running!",
+  });
+});
+
+app.post("/api/admin/login", (req, res) => {
+  const { username, password } = req.body;
+
+  if (
+    username !== process.env.ADMIN_USERNAME ||
+    password !== process.env.ADMIN_PASSWORD
+  ) {
+    return res.status(401).json({
+      error: "Incorrect username or password.",
+    });
+  }
+
+  const token = jwt.sign(
+    {
+      role: "admin",
+    },
+    process.env.JWT_SECRET,
+    {
+      expiresIn: "8h",
+    }
+  );
+
+  res.json({
+    message: "Login successful.",
+    token,
   });
 });
 
@@ -146,7 +205,7 @@ app.post("/api/orders", async (req, res) => {
 
 // GET ALL ORDERS
 // GET /api/orders
-app.get("/api/orders", async (req, res) => {
+app.get("/api/orders", requireAdmin, async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT *
@@ -168,7 +227,7 @@ app.get("/api/orders", async (req, res) => {
 
 // GET ONE ORDER
 // GET /api/orders/:id
-app.get("/api/orders/:id", async (req, res) => {
+app.get("/api/orders/:id", requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -199,7 +258,7 @@ app.get("/api/orders/:id", async (req, res) => {
 
 // UPDATE ORDER STATUS
 // PATCH /api/orders/:id/status
-app.patch("/api/orders/:id/status", async (req, res) => {
+app.patch("/api/orders/:id/status", requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;

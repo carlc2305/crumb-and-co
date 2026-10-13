@@ -3,11 +3,78 @@ import express from "express";
 import cors from "cors";
 import jwt from "jsonwebtoken";
 import pool from "./db.js";
+import Stripe from "stripe";
 
 const app = express();
 const PORT = process.env.PORT || 4242;
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 app.use(cors());
+
+app.post(
+  "/api/stripe/webhook",
+  express.raw({ type: "application/json" }),
+  async (req, res) => {
+    const signature = req.headers["stripe-signature"];
+
+    let event;
+
+    try {
+      event = stripe.webhooks.constructEvent(
+        req.body,
+        signature,
+        process.env.STRIPE_WEBHOOK_SECRET
+      );
+    } catch (error) {
+      console.error(
+        "Stripe webhook signature verification failed:",
+        error.message
+      );
+
+      return res.status(400).send(`Webhook Error: ${error.message}`);
+    }
+
+    try {
+      switch (event.type) {
+        case "checkout.session.completed": {
+          const session = event.data.object;
+
+          const orderId = session.metadata?.orderId;
+
+          if (!orderId) {
+            console.error("Stripe session is missing orderId metadata.");
+            break;
+          }
+
+          console.log(`Stripe payment completed for order ${orderId}`);
+
+          await pool.query(
+            `
+              UPDATE orders
+              SET payment_status = 'Paid'
+              WHERE id = $1;
+            `,
+            [orderId]
+          );
+
+          break;
+        }
+
+        default:
+          console.log(`Unhandled Stripe event: ${event.type}`);
+      }
+
+      res.json({ received: true });
+    } catch (error) {
+      console.error("Stripe webhook processing error:", error);
+
+      res.status(500).json({
+        error: "Webhook processing failed.",
+      });
+    }
+  }
+);
+
 app.use(express.json());
 
 function requireAdmin(req, res, next) {
@@ -108,6 +175,98 @@ app.get("/api/test-db", async (req, res) => {
 
     res.status(500).json({
       message: "Database connection failed.",
+    });
+  }
+});
+
+// CREATE STRIPE CHECKOUT SESSION
+app.post("/api/create-checkout-session", async (req, res) => {
+  try {
+    const { orderId } = req.body;
+
+    if (!orderId) {
+      return res.status(400).json({
+        error: "Order ID is required.",
+      });
+    }
+
+    const result = await pool.query(
+      `
+        SELECT *
+        FROM orders
+        WHERE id = $1;
+      `,
+      [orderId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        error: "Order not found.",
+      });
+    }
+
+    const order = result.rows[0];
+
+    if (order.status === "Cancelled") {
+      return res.status(400).json({
+        error: "This order has been cancelled.",
+      });
+    }
+
+    const items = Array.isArray(order.items) ? order.items : [];
+
+    if (items.length === 0) {
+      return res.status(400).json({
+        error: "Order contains no items.",
+      });
+    }
+
+    const lineItems = items.map((item) => ({
+      price_data: {
+        currency: "gbp",
+        product_data: {
+          name: item.name,
+        },
+        unit_amount: Math.round(Number(item.price) * 100),
+      },
+      quantity: Number(item.quantity),
+    }));
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+
+      line_items: lineItems,
+
+      customer_email: order.email,
+
+      metadata: {
+        orderId: order.id,
+      },
+
+      payment_intent_data: {
+        metadata: {
+          orderId: order.id,
+        },
+      },
+
+      success_url:
+        `${process.env.FRONTEND_URL}/order-confirmation` +
+        `?session_id={CHECKOUT_SESSION_ID}`,
+
+      cancel_url:
+        `${process.env.FRONTEND_URL}/payment?orderId=${encodeURIComponent(
+          order.id
+        )}`,
+    });
+
+    res.json({
+      url: session.url,
+    });
+  } catch (error) {
+    console.error("Create Stripe Checkout Session error:", error);
+
+    res.status(500).json({
+      error: "Unable to create Stripe Checkout Session.",
     });
   }
 });

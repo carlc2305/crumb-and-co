@@ -6,8 +6,15 @@ function OrderReview() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const { firstName, lastName, email, phone, collectionDate, collectionTime } =
-    location.state || {};
+  const {
+    orderId,
+    firstName,
+    lastName,
+    email,
+    phone,
+    collectionDate,
+    collectionTime,
+  } = location.state || {};
 
   function formatDate(date) {
     if (!date) return "Not selected";
@@ -122,6 +129,7 @@ function OrderReview() {
             onClick={() => {
               navigate("/payment", {
                 state: {
+                  orderId,
                   firstName,
                   lastName,
                   email,

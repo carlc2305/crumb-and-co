@@ -7,8 +7,15 @@ function Payment() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const { firstName, lastName, email, phone, collectionDate, collectionTime } =
-    location.state || {};
+  const {
+    orderId,
+    firstName,
+    lastName,
+    email,
+    phone,
+    collectionDate,
+    collectionTime,
+  } = location.state || {};
 
   if (cart.length === 0) {
     return (
@@ -62,17 +69,32 @@ function Payment() {
 
           <button
             className="pay-button"
-            onClick={() => {
-              navigate("/order-confirmation", {
-                state: {
-                  firstName,
-                  lastName,
-                  email,
-                  phone,
-                  collectionDate,
-                  collectionTime,
-                },
-              });
+            onClick={async () => {
+              try {
+                const response = await fetch(
+                  "http://localhost:4242/api/create-checkout-session",
+                  {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                      orderId,
+                    }),
+                  },
+                );
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                  throw new Error(data.error || "Unable to start payment.");
+                }
+
+                window.location.href = data.url;
+              } catch (error) {
+                console.error("Payment error:", error);
+                alert(error.message);
+              }
             }}
           >
             Pay £{cartTotal.toFixed(2)}

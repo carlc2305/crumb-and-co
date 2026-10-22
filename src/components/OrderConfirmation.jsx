@@ -1,12 +1,47 @@
-import { Link, useLocation } from "react-router-dom";
-import { useCart } from "../context/CartContext";
+import { Link, useSearchParams } from "react-router-dom";
+import { useEffect, useState } from "react";
 
 function OrderConfirmation() {
-  const { cart, cartTotal } = useCart();
-  const location = useLocation();
+  const [searchParams] = useSearchParams();
 
-  const { firstName, lastName, email, collectionDate, collectionTime } =
-    location.state || {};
+  const [order, setOrder] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const sessionId = searchParams.get("session_id");
+
+  useEffect(() => {
+    async function fetchOrder() {
+      if (!sessionId) {
+        setError("No Stripe payment session was found.");
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          `https://crumb-and-co-backend.onrender.com/api/order-confirmation?session_id=${encodeURIComponent(
+            sessionId,
+          )}`,
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Unable to load your order.");
+        }
+
+        setOrder(data.order);
+      } catch (error) {
+        console.error("Order confirmation error:", error);
+        setError("Unable to load your order details.");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchOrder();
+  }, [sessionId]);
 
   function formatDate(date) {
     if (!date) return "Not selected";
@@ -45,6 +80,36 @@ function OrderConfirmation() {
     return `${hour - 12}:${minutes} PM`;
   }
 
+  if (loading) {
+    return (
+      <main className="order-confirmation-page">
+        <div className="order-confirmation-container">
+          <h1>Loading your order...</h1>
+        </div>
+      </main>
+    );
+  }
+
+  if (error || !order) {
+    return (
+      <main className="order-confirmation-page">
+        <div className="order-confirmation-container">
+          <h1>Order Confirmation</h1>
+
+          <p className="confirmation-message">
+            {error || "Unable to load your order."}
+          </p>
+
+          <div className="confirmation-actions">
+            <Link to="/" className="confirmation-home-button">
+              Back to Home
+            </Link>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="order-confirmation-page">
       <div className="order-confirmation-container">
@@ -53,12 +118,11 @@ function OrderConfirmation() {
         <h1>Order Confirmed!</h1>
 
         <p className="confirmation-message">
-          Thank you for your order, {firstName || "there"}!
+          Thank you for your order, {order.first_name || "there"}!
         </p>
 
         <p className="confirmation-email">
-          We'll send your order details to{" "}
-          <strong>{email || "your email address"}</strong>.
+          We'll send your order details to <strong>{order.email}</strong>.
         </p>
 
         <section className="confirmation-section">
@@ -68,18 +132,18 @@ function OrderConfirmation() {
             <div>
               <strong>Name</strong>
               <span>
-                {firstName} {lastName}
+                {order.first_name} {order.last_name}
               </span>
             </div>
 
             <div>
               <strong>Date</strong>
-              <span>{formatDate(collectionDate)}</span>
+              <span>{formatDate(order.collection_date)}</span>
             </div>
 
             <div>
               <strong>Time</strong>
-              <span>{formatTime(collectionTime)}</span>
+              <span>{formatTime(order.collection_time)}</span>
             </div>
           </div>
         </section>
@@ -87,20 +151,22 @@ function OrderConfirmation() {
         <section className="confirmation-section">
           <h2>Your Order</h2>
 
-          {cart.map((item) => (
+          {order.items.map((item) => (
             <div className="confirmation-item" key={item.id}>
               <div>
                 <strong>{item.name}</strong>
                 <span>Qty: {item.quantity}</span>
               </div>
 
-              <span>£{(item.price * item.quantity).toFixed(2)}</span>
+              <span>
+                £{(Number(item.price) * Number(item.quantity)).toFixed(2)}
+              </span>
             </div>
           ))}
 
           <div className="confirmation-total">
             <span>Total</span>
-            <strong>£{cartTotal.toFixed(2)}</strong>
+            <strong>£{Number(order.total).toFixed(2)}</strong>
           </div>
         </section>
 

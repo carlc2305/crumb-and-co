@@ -4,6 +4,7 @@ import cors from "cors";
 import jwt from "jsonwebtoken";
 import pool from "./db.js";
 import Stripe from "stripe";
+import products from "./products.js";
 
 const app = express();
 const PORT = process.env.PORT || 4242;
@@ -23,12 +24,12 @@ app.post(
       event = stripe.webhooks.constructEvent(
         req.body,
         signature,
-        process.env.STRIPE_WEBHOOK_SECRET
+        process.env.STRIPE_WEBHOOK_SECRET,
       );
     } catch (error) {
       console.error(
         "Stripe webhook signature verification failed:",
-        error.message
+        error.message,
       );
 
       return res.status(400).send(`Webhook Error: ${error.message}`);
@@ -46,15 +47,22 @@ app.post(
             break;
           }
 
+          if (session.payment_status !== "paid") {
+            console.log(
+              `Stripe checkout completed for order ${orderId}, but payment status is ${session.payment_status}.`,
+            );
+            break;
+          }
+
           console.log(`Stripe payment completed for order ${orderId}`);
 
           await pool.query(
             `
-              UPDATE orders
-              SET payment_status = 'Paid'
-              WHERE id = $1;
-            `,
-            [orderId]
+      UPDATE orders
+      SET payment_status = 'Paid'
+      WHERE id = $1;
+    `,
+            [orderId],
           );
 
           break;
@@ -72,7 +80,7 @@ app.post(
         error: "Webhook processing failed.",
       });
     }
-  }
+  },
 );
 
 app.use(express.json());
@@ -122,6 +130,7 @@ function formatOrder(row) {
     items: row.items,
     total: Number(row.total),
     status: row.status,
+    paymentStatus: row.payment_status,
     notes: row.notes,
   };
 }
@@ -152,7 +161,7 @@ app.post("/api/admin/login", (req, res) => {
     process.env.JWT_SECRET,
     {
       expiresIn: "8h",
-    }
+    },
   );
 
   res.json({
@@ -196,7 +205,7 @@ app.post("/api/create-checkout-session", async (req, res) => {
         FROM orders
         WHERE id = $1;
       `,
-      [orderId]
+      [orderId],
     );
 
     if (result.rows.length === 0) {
@@ -204,6 +213,56 @@ app.post("/api/create-checkout-session", async (req, res) => {
         error: "Order not found.",
       });
     }
+
+    app.get("/api/order-confirmation", async (req, res) => {
+      try {
+        const { session_id } = req.query;
+
+        if (!session_id) {
+          return res.status(400).json({
+            error: "Stripe session ID is required.",
+          });
+        }
+
+        const session = await stripe.checkout.sessions.retrieve(session_id);
+
+        const orderId = session.metadata?.orderId;
+
+        if (!orderId) {
+          return res.status(400).json({
+            error: "Order ID not found in Stripe session.",
+          });
+        }
+
+        const result = await pool.query(
+          `
+        SELECT *
+        FROM orders
+        WHERE id = $1;
+      `,
+          [orderId],
+        );
+
+        if (result.rows.length === 0) {
+          return res.status(404).json({
+            error: "Order not found.",
+          });
+        }
+
+        const order = result.rows[0];
+
+        res.json({
+          order,
+          paymentStatus: order.payment_status,
+        });
+      } catch (error) {
+        console.error("Order confirmation error:", error);
+
+        res.status(500).json({
+          error: "Unable to retrieve order confirmation.",
+        });
+      }
+    });
 
     const order = result.rows[0];
 
@@ -221,16 +280,32 @@ app.post("/api/create-checkout-session", async (req, res) => {
       });
     }
 
-    const lineItems = items.map((item) => ({
-      price_data: {
-        currency: "gbp",
-        product_data: {
-          name: item.name,
+    const lineItems = items.map((item) => {
+      const product = products.find(
+        (product) => product.id === Number(item.id),
+      );
+
+      if (!product) {
+        throw new Error(`Product ${item.id} not found.`);
+      }
+
+      const quantity = Number(item.quantity);
+
+      if (!Number.isInteger(quantity) || quantity < 1) {
+        throw new Error(`Invalid quantity for product ${item.id}.`);
+      }
+
+      return {
+        price_data: {
+          currency: "gbp",
+          product_data: {
+            name: product.name,
+          },
+          unit_amount: Math.round(product.price * 100),
         },
-        unit_amount: Math.round(Number(item.price) * 100),
-      },
-      quantity: Number(item.quantity),
-    }));
+        quantity,
+      };
+    });
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
@@ -253,10 +328,9 @@ app.post("/api/create-checkout-session", async (req, res) => {
         `${process.env.FRONTEND_URL}/order-confirmation` +
         `?session_id={CHECKOUT_SESSION_ID}`,
 
-      cancel_url:
-        `${process.env.FRONTEND_URL}/payment?orderId=${encodeURIComponent(
-          order.id
-        )}`,
+      cancel_url: `${process.env.FRONTEND_URL}/payment?orderId=${encodeURIComponent(
+        order.id,
+      )}`,
     });
 
     res.json({
@@ -281,7 +355,6 @@ app.post("/api/orders", async (req, res) => {
       collectionDate,
       collectionTime,
       items,
-      total,
       notes,
     } = req.body;
 
@@ -295,13 +368,41 @@ app.post("/api/orders", async (req, res) => {
       !collectionDate ||
       !collectionTime ||
       !Array.isArray(items) ||
-      items.length === 0 ||
-      total === undefined
+      items.length === 0
     ) {
       return res.status(400).json({
         error: "Missing required order information.",
       });
     }
+
+    const validatedItems = items.map((item) => {
+      const product = products.find(
+        (product) => product.id === Number(item.id),
+      );
+
+      if (!product) {
+        throw new Error(`Product ${item.id} not found.`);
+      }
+
+      const quantity = Number(item.quantity);
+
+      if (!Number.isInteger(quantity) || quantity < 1) {
+        throw new Error(`Invalid quantity for product ${item.id}.`);
+      }
+
+      return {
+        id: product.id,
+        name: product.name,
+        category: product.category,
+        price: product.price,
+        quantity,
+      };
+    });
+
+    const calculatedTotal = validatedItems.reduce(
+      (sum, item) => sum + item.price * item.quantity,
+      0,
+    );
 
     const orderId = `CC-${Date.now()}`;
 
@@ -346,10 +447,10 @@ app.post("/api/orders", async (req, res) => {
         fulfilment,
         collectionDate,
         collectionTime,
-        JSON.stringify(items),
-        total,
+        JSON.stringify(validatedItems),
+        calculatedTotal,
         notes || null,
-      ]
+      ],
     );
 
     res.status(201).json(formatOrder(result.rows[0]));
@@ -396,7 +497,7 @@ app.get("/api/orders/:id", requireAdmin, async (req, res) => {
         FROM orders
         WHERE id = $1;
       `,
-      [id]
+      [id],
     );
 
     if (result.rows.length === 0) {
@@ -422,11 +523,7 @@ app.patch("/api/orders/:id/status", requireAdmin, async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
-    const allowedStatuses = [
-      "Pending",
-      "Completed",
-      "Cancelled",
-    ];
+    const allowedStatuses = ["Pending", "Completed", "Cancelled"];
 
     if (!allowedStatuses.includes(status)) {
       return res.status(400).json({
@@ -441,7 +538,7 @@ app.patch("/api/orders/:id/status", requireAdmin, async (req, res) => {
         WHERE id = $2
         RETURNING *;
       `,
-      [status, id]
+      [status, id],
     );
 
     if (result.rows.length === 0) {

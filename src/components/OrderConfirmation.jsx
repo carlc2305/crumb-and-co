@@ -46,7 +46,8 @@ function OrderConfirmation() {
   function formatDate(date) {
     if (!date) return "Not selected";
 
-    const [year, month, day] = date.split("-");
+    const datePart = String(date).slice(0, 10);
+    const [year, month, day] = datePart.split("-");
 
     return new Date(
       Number(year),

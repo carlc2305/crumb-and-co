@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 
 const OrderContext = createContext();
 
-const API_URL = "http://localhost:4242";
+const API_URL = "https://crumb-and-co-backend.onrender.com";
 
 export function OrderProvider({ children }) {
   const [orders, setOrders] = useState([]);

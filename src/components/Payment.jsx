@@ -72,7 +72,7 @@ function Payment() {
             onClick={async () => {
               try {
                 const response = await fetch(
-                  "http://localhost:4242/api/create-checkout-session",
+                  "https://crumb-and-co-backend.onrender.com/api/create-checkout-session",
                   {
                     method: "POST",
                     headers: {

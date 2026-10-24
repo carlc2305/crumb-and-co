@@ -92,6 +92,12 @@ function AdminOrder() {
                     : "Delivery"}
                 </span>
               </div>
+              <div>
+                <strong>Payment Status</strong>
+                <span>
+                  {order.paymentStatus === "Paid" ? "Paid" : "Payment Pending"}
+                </span>
+              </div>
             </div>
           </section>
         </div>
